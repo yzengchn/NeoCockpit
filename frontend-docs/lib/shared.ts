@@ -25,6 +25,6 @@ export const seoKeywords = [
 // fill this with your actual GitHub info, for example:
 export const gitConfig = {
   user: 'yzengchn',
-  repo: 'neocockpit/frontend-docs',
+  repo: 'neocockpit',
   branch: 'main',
 };

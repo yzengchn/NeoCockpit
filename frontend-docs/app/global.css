@@ -251,6 +251,10 @@ main tr:hover td {
 }
 
 #nd-docs-layout .prose {
+  /* @tailwindcss/typography caps prose at 65ch (~520px), which leaves the
+     right half of the main cell empty once the article fills it. Let the
+     text span the full cell so there is no dead space on either side. */
+  max-width: 100% !important;
   --tw-prose-body: var(--nc-body);
   --tw-prose-headings: var(--nc-heading);
   --tw-prose-lead: var(--nc-muted);
@@ -325,6 +329,27 @@ main tr:hover td {
 
 #nd-docs-layout > [class*='grid-area:main'] {
   box-shadow: inset 1px 0 var(--nc-main-shadow);
+}
+
+/* Left-align the docs article in the main grid cell.
+   The default fumadocs-ui Container centers a max-w-900 article inside the
+   main cell, which produces ~270px of empty space on the left of the content
+   on large viewports. Letting the article fill the cell and pinning it to
+   the left edge removes the left whitespace while preserving prose's 65ch
+   reading width. */
+#nd-page {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  max-width: 100% !important;
+}
+
+/* The main grid cell is capped at --fd-layout-width (97rem) while columns 1
+   and 5 are `minmax(min-content, 1fr)`. On wide viewports that leaves the
+   two 1fr gutters to devour the leftover space (e.g. ~184px each side at
+   1920px). Raising the cap lets the main cell absorb the full width so the
+   screen edges are flush. */
+#nd-docs-layout {
+  --fd-layout-width: 200rem !important;
 }
 
 #nd-sidebar {
