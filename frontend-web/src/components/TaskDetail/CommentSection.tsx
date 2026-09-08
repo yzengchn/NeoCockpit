@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Avatar, Button, Card, Empty, Input, List, Tag, Tooltip, Typography, message } from 'antd';
+import { App as AntdApp, Avatar, Button, Card, Empty, Input, List, Tag, Tooltip, Typography } from 'antd';
 import { CloseOutlined, MessageOutlined, RollbackOutlined, SendOutlined, UserOutlined } from '@ant-design/icons';
-import { taskApi, isUserLoggedIn } from '@/services/api';
-import type { TaskComment, TaskCommentListResponse } from '@/types/task';
+import { socialApi, isUserLoggedIn } from '@/services/api';
+import type { SocialComment, SocialCommentListResponse, SocialTargetType } from '@/types/task';
 import { glassCardOverflow } from '@/constants/styles';
 
 const { Text, Paragraph } = Typography;
@@ -12,13 +12,13 @@ const { TextArea } = Input;
 const COMMENT_MIN_LENGTH = 10;
 const COMMENT_MAX_LENGTH = 150;
 
-const COMMENT_STATUS_LABEL: Record<TaskComment['status'], string> = {
+const COMMENT_STATUS_LABEL: Record<SocialComment['status'], string> = {
   pending: '审核中',
   approved: '',
   rejected: '未通过',
 };
 
-const COMMENT_STATUS_COLOR: Record<TaskComment['status'], string> = {
+const COMMENT_STATUS_COLOR: Record<SocialComment['status'], string> = {
   pending: '#fbbf24',
   approved: 'var(--c-text-muted)',
   rejected: '#f87171',
@@ -30,8 +30,10 @@ type CommentSubmitPayload = {
 };
 
 interface CommentSectionProps {
-  taskId: string;
+  targetType: SocialTargetType;
+  targetId?: string;
   isIdle: boolean;
+  placeholder?: string;
 }
 
 const formatCommentTime = (value?: string | null): string => {
@@ -51,16 +53,23 @@ const getApiErrorDetail = (err: any): string => {
   return typeof detail === 'string' ? detail : '';
 };
 
-export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }) => {
+export const CommentSection: React.FC<CommentSectionProps> = ({
+  targetType,
+  targetId,
+  isIdle,
+  placeholder = '写下对这个作品的具体看法',
+}) => {
+  const { message } = AntdApp.useApp();
   const queryClient = useQueryClient();
   const [commentContent, setCommentContent] = useState('');
-  const [replyTarget, setReplyTarget] = useState<TaskComment | null>(null);
+  const [replyTarget, setReplyTarget] = useState<SocialComment | null>(null);
   const [replyContent, setReplyContent] = useState('');
   const [reviewingCommentIds, setReviewingCommentIds] = useState<Set<string>>(() => new Set());
+  const resolvedTargetId = targetId ?? '';
 
   const commentMutation = useMutation({
     mutationFn: ({ content, parentId }: CommentSubmitPayload) =>
-      taskApi.createComment(taskId, { content, parent_id: parentId }),
+      socialApi.createComment(targetType, resolvedTargetId, { content, parent_id: parentId }),
     onSuccess: (comment, variables) => {
       if (variables.parentId) {
         setReplyContent('');
@@ -73,7 +82,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
         next.add(comment.id);
         return next;
       });
-      queryClient.invalidateQueries({ queryKey: ['taskComments', taskId] });
+      queryClient.invalidateQueries({ queryKey: ['socialComments', targetType, resolvedTargetId] });
       message.success('评论已提交，审核中');
     },
     onError: (err: any) => {
@@ -92,10 +101,10 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
 
   const shouldIncludeMyReviewing = reviewingCommentIds.size > 0;
 
-  const { data: commentsData, isLoading: commentsLoading } = useQuery<TaskCommentListResponse>({
-    queryKey: ['taskComments', taskId, shouldIncludeMyReviewing],
-    queryFn: () => taskApi.listComments(taskId, 0, 100, shouldIncludeMyReviewing),
-    enabled: !!taskId,
+  const { data: commentsData, isLoading: commentsLoading } = useQuery<SocialCommentListResponse>({
+    queryKey: ['socialComments', targetType, resolvedTargetId, shouldIncludeMyReviewing],
+    queryFn: () => socialApi.listComments(targetType, resolvedTargetId, 0, 100, shouldIncludeMyReviewing),
+    enabled: !!resolvedTargetId,
     staleTime: 5_000,
     refetchInterval: isIdle || !shouldIncludeMyReviewing ? false : (query) => {
       const hasPendingReviewingComment = query.state.data?.items.some((comment) =>
@@ -117,7 +126,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
   );
 
   const repliesByParentId = useMemo(() => {
-    const groups = new Map<string, TaskComment[]>();
+    const groups = new Map<string, SocialComment[]>();
     visibleComments.forEach((comment) => {
       if (!comment.parent_id) return;
       const replies = groups.get(comment.parent_id) ?? [];
@@ -132,7 +141,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
     setReplyTarget(null);
     setReplyContent('');
     setReviewingCommentIds(new Set());
-  }, [taskId]);
+  }, [resolvedTargetId]);
 
   const handleSubmitComment = (parentId?: string | null) => {
     const content = (parentId ? replyContent : commentContent).trim();
@@ -152,10 +161,11 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
       message.warning('请先登录后再评论');
       return;
     }
+    if (!resolvedTargetId) return;
     commentMutation.mutate({ content, parentId });
   };
 
-  const renderReplyInput = (target: TaskComment) => {
+  const renderReplyInput = (target: SocialComment) => {
     if (replyTarget?.id !== target.id) return null;
 
     const replyLength = replyContent.trim().length;
@@ -210,7 +220,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
           style={{
             height: 40,
             borderRadius: 'var(--radius-xs)',
-            fontWeight: 700,
+            fontWeight: 500,
           }}
         >
           回复
@@ -219,7 +229,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
     );
   };
 
-  const renderCommentItem = (comment: TaskComment, isReply = false) => (
+  const renderCommentItem = (comment: SocialComment, isReply = false) => (
     <div style={{
       padding: isReply ? '10px 0' : '0',
       opacity: comment.status === 'pending' ? 0.82 : 1,
@@ -236,7 +246,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            <Text style={{ color: 'var(--c-text)', fontWeight: 700 }}>{comment.author}</Text>
+            <Text style={{ color: 'var(--c-text)', fontWeight: 500 }}>{comment.author}</Text>
             {comment.reply_to_author && (
               <Text style={{ color: 'var(--c-text-muted)', fontSize: 12 }}>
                 回复 {comment.reply_to_author}
@@ -249,7 +259,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
               <Text style={{
                 color: COMMENT_STATUS_COLOR[comment.status],
                 fontSize: 12,
-                fontWeight: 700,
+                fontWeight: 500,
               }}>
                 {COMMENT_STATUS_LABEL[comment.status]}
               </Text>
@@ -314,7 +324,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
       title={
         <span style={{
           fontSize: 13,
-          fontWeight: 700,
+          fontWeight: 500,
           letterSpacing: '1px',
           textTransform: 'uppercase',
           color: 'var(--c-text-secondary)',
@@ -330,7 +340,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
             background: 'transparent',
             color: '#67e8f9',
             borderRadius: 'var(--radius-xs)',
-            fontWeight: 700,
+            fontWeight: 500,
           }}>
             {visibleComments.length}
           </Tag>
@@ -368,7 +378,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
           maxLength={COMMENT_MAX_LENGTH}
           showCount
           autoSize={{ minRows: 3, maxRows: 6 }}
-          placeholder="写下对这个作品的具体看法"
+          placeholder={placeholder}
           onChange={(event) => setCommentContent(event.target.value)}
           onPressEnter={(event) => {
             if ((event.metaKey || event.ctrlKey) && !event.shiftKey) {
@@ -397,7 +407,7 @@ export const CommentSection: React.FC<CommentSectionProps> = ({ taskId, isIdle }
           style={{
             height: 40,
             borderRadius: 'var(--radius-xs)',
-            fontWeight: 700,
+            fontWeight: 500,
           }}
         >
           发布

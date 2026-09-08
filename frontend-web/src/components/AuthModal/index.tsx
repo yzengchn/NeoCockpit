@@ -1,9 +1,11 @@
 import React, { useState, useCallback } from "react";
-import { Modal, Input, Button, Space } from "antd";
+import { Input, Button, Space } from "antd";
+import { HudModal } from "@/components/HudModal";
 import InkCanvas, { InkSignature, SignatureRejectReason, AnchorPoint as CanvasAnchorPoint } from "../InkCanvas";
-import { getLastNickname } from "@/services/api";
+import { getLastNickname, getUserInfo } from "@/services/api";
 import type { InkSignature as InkSignatureType } from "@/types/task";
 import { userApi } from "@/services/api";
+import "./AuthModal.css";
 
 /** 设计师风格昵称 — 前缀+后缀自由碰撞，组合≤4字 */
 const NICK_PREFIX = [
@@ -72,14 +74,12 @@ const AuthModal: React.FC<AuthModalProps> = ({
     try {
       const last = getLastNickname();
       if (last) return last;
-      const raw = localStorage.getItem('aigc_user_info');
-      if (raw) return JSON.parse(raw).nick_name || '';
+      return getUserInfo()?.nick_name || '';
     } catch {}
     return '';
   });
   const [signature, setSignature] = useState<InkSignature | null>(null);
   const [loading, setLoading] = useState(false);
-  const [checkingNick, setCheckingNick] = useState(false);
   const [error, setError] = useState("");
   const [hintAnchors, setHintAnchors] = useState<{ start?: CanvasAnchorPoint; end?: CanvasAnchorPoint } | null>(null);
   const [canvasKey, setCanvasKey] = useState(0);
@@ -95,14 +95,12 @@ const AuthModal: React.FC<AuthModalProps> = ({
         try {
           const last = getLastNickname();
           if (last) return last;
-          const raw = localStorage.getItem('aigc_user_info');
-          if (raw) return JSON.parse(raw).nick_name || '';
+          return getUserInfo()?.nick_name || '';
         } catch {}
         return '';
       });
       setSignature(null);
       setLoading(false);
-      setCheckingNick(false);
       setError("");
       setHintAnchors(null);
       setCanvasKey(0);
@@ -157,27 +155,15 @@ const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [nickName]);
 
-  /** 注册第一步：昵称校验 + 进入画布 */
-  const handleRegisterNickNext = useCallback(async () => {
+  /** 注册第一步：输入昵称后进入画布，重复昵称允许注册 */
+  const handleRegisterNickNext = useCallback(() => {
     const name = nickName.trim();
     if (!name) {
       setError("请输入昵称");
       return;
     }
-    setCheckingNick(true);
     setError("");
-    try {
-      const available = await userApi.checkNickname(name);
-      if (!available) {
-        setError("该昵称已被占用，请换一个");
-      } else {
-        setStep(2);
-      }
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || "校验失败，请重试");
-    } finally {
-      setCheckingNick(false);
-    }
+    setStep(2);
   }, [nickName]);
 
   /** 登录第二步：提交签名 */
@@ -321,37 +307,16 @@ const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <>
-    <Modal
+    <HudModal
       open={open}
-      footer={null}
       closable={!!onCancel}
       onCancel={onCancel}
       maskClosable={!!onCancel}
-      centered
       width={490}
-      styles={{
-        body: { padding: 0, overflow: "visible" },
-        mask: { backgroundColor: "rgba(0,0,0,0.6)" },
-      }}
+      className="auth-modal"
     >
-      <div
-        style={{
-          padding: "32px 32px 24px",
-          background: "var(--c-bg-card)",
-          borderRadius: "var(--radius-lg)",
-          border: "1px solid var(--c-border)",
-          boxShadow: "var(--shadow-card)",
-        }}
-      >
-        <div
-          style={{
-            textAlign: "center",
-            marginBottom: 20,
-            fontSize: 18,
-            fontWeight: 600,
-            color: "var(--c-text)",
-          }}
-        >
+      <div className="auth-modal__panel">
+        <div className="auth-modal__title">
           {title}
         </div>
 
@@ -404,14 +369,13 @@ const AuthModal: React.FC<AuthModalProps> = ({
             )}
             <Button
               block
-              loading={checkingNick}
               onClick={isLogin ? handleLoginNickNext : handleRegisterNickNext}
               disabled={!nickName.trim()}
               style={{
                 height: 44,
                 marginTop: 12,
                 borderRadius: "var(--radius-sm)",
-                fontWeight: 600,
+                fontWeight: 500,
                 background: nickName.trim()
                   ? "linear-gradient(135deg, var(--c-primary), var(--c-accent))"
                   : undefined,
@@ -440,11 +404,11 @@ const AuthModal: React.FC<AuthModalProps> = ({
               <span style={{ color: "var(--c-text-secondary)", fontSize: 13 }}>
                 {isLogin ? (
                   <>
-                    <span style={{ color: "var(--c-primary-light)", fontWeight: 600 }}>{nickName}</span> 请输入你的签名
+                    <span style={{ color: "var(--c-primary-light)", fontWeight: 500 }}>{nickName}</span> 请输入你的签名
                   </>
                 ) : (
                   <>
-                    <span style={{ color: "var(--c-primary-light)", fontWeight: 600 }}>{nickName}</span> 绘制签名
+                    <span style={{ color: "var(--c-primary-light)", fontWeight: 500 }}>{nickName}</span> 绘制签名
                   </>
                 )}
               </span>
@@ -460,7 +424,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
                   border: "1px solid rgba(251,191,36,0.3)",
                   color: "#fbbf24",
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: 500,
                   letterSpacing: "0.5px",
                 }}
               >
@@ -510,7 +474,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
               style={{
                 height: 44,
                 borderRadius: "var(--radius-sm)",
-                fontWeight: 600,
+                fontWeight: 500,
                 background: signature
                   ? "linear-gradient(135deg, var(--c-primary), var(--c-accent))"
                   : undefined,
@@ -552,23 +516,19 @@ const AuthModal: React.FC<AuthModalProps> = ({
           </>
         )}
       </div>
-    </Modal>
+    </HudModal>
     
     {/* 保存签名确认框 */}
-    <Modal
+    <HudModal
       open={saveConfirmOpen}
-      footer={null}
       closable={false}
-      centered
       width={400}
-      styles={{
-        body: { padding: "24px 28px 20px" },
-        mask: { backgroundColor: "rgba(0,0,0,0.6)" },
-      }}
+      className="auth-modal auth-modal--compact"
+      variant="compact"
     >
-      <div style={{ textAlign: "center" }}>
+      <div className="auth-modal__save">
         <div style={{ fontSize: 32, marginBottom: 12 }}>🔐</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: "var(--c-text-primary)", marginBottom: 8 }}>
+        <div style={{ fontSize: 16, fontWeight: 500, color: "var(--c-text-primary)", marginBottom: 8 }}>
           签名笔迹即密码
         </div>
         <div style={{ fontSize: 13, color: "var(--c-text-secondary)", lineHeight: 1.6, marginBottom: 20 }}>
@@ -581,7 +541,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
             style={{
               height: 44,
               borderRadius: "var(--radius-sm)",
-              fontWeight: 600,
+              fontWeight: 500,
               background: "linear-gradient(135deg, var(--c-primary), var(--c-accent))",
               border: "none",
               color: "#fff",
@@ -605,7 +565,7 @@ const AuthModal: React.FC<AuthModalProps> = ({
           </Button>
         </Space>
       </div>
-    </Modal>
+    </HudModal>
     </>
   );
 };

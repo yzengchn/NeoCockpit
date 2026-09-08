@@ -1,74 +1,83 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { HeartFilled, HeartOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { message } from 'antd';
-import { isUserLoggedIn, taskApi } from '@/services/api';
+import type { QueryKey } from '@tanstack/react-query';
+import { App as AntdApp } from 'antd';
+import { isUserLoggedIn, socialApi } from '@/services/api';
+import type { SocialTargetType } from '@/types/task';
+import './LikeSection.css';
 
 interface LikeSectionProps {
-  taskId: string;
+  targetType: SocialTargetType;
+  targetId?: string;
   likes: number;
   containerStyle?: React.CSSProperties;
+  invalidateQueryKeys?: QueryKey[];
+  onLiked?: () => void;
 }
 
-export const LikeSection: React.FC<LikeSectionProps> = ({ taskId, likes, containerStyle }) => {
-  const queryClient = useQueryClient();
-  const [isHovered, setIsHovered] = useState(false);
+const LIKE_ENERGY_PARTICLES = Array.from({ length: 16 }, (_, index) => index);
 
-  const { data: likedTaskIds } = useQuery({
-    queryKey: ['myLikedTaskIds'],
-    queryFn: () => taskApi.listMyLikedTaskIds(),
-    enabled: isUserLoggedIn(),
+export const LikeSection: React.FC<LikeSectionProps> = ({
+  targetType,
+  targetId,
+  likes,
+  containerStyle,
+  invalidateQueryKeys,
+  onLiked,
+}) => {
+  const { message } = AntdApp.useApp();
+  const queryClient = useQueryClient();
+  const resolvedTargetId = targetId ?? '';
+  const likedIdsQueryKey = useMemo<QueryKey>(() => ['socialLikedIds', targetType], [targetType]);
+
+  const { data: likedTargetIds } = useQuery({
+    queryKey: likedIdsQueryKey,
+    queryFn: () => socialApi.listMyLikedTargetIds(targetType),
+    enabled: isUserLoggedIn() && Boolean(resolvedTargetId),
     staleTime: 60_000,
   });
 
-  const likedByMe = likedTaskIds?.includes(taskId) ?? false;
+  const likedByMe = likedTargetIds?.includes(resolvedTargetId) ?? false;
 
   const likeMutation = useMutation({
-    mutationFn: () => taskApi.likeTask(taskId),
+    mutationFn: () => socialApi.like(targetType, resolvedTargetId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['task', taskId] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['myLikedTaskIds'] });
+      const queryKeys = invalidateQueryKeys ?? [
+        ...(targetType === 'theme_package'
+          ? [
+              ['themes'],
+              ['themes', 'detail', resolvedTargetId],
+            ]
+          : [
+              ['task', resolvedTargetId],
+              ['inspirationDetail', resolvedTargetId],
+              ['tasks'],
+              ['inspiration'],
+            ]),
+      ];
+      queryKeys.forEach((queryKey) => {
+        queryClient.invalidateQueries({ queryKey });
+      });
+      queryClient.invalidateQueries({ queryKey: likedIdsQueryKey });
+      onLiked?.();
     },
     onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
       if (err?.response?.status === 401) {
         message.warning('请先登录后再点赞');
       } else if (err?.response?.status === 409) {
-        message.info('你已经点赞过该任务');
+        message.info(detail || '你已经点赞过该作品');
       } else {
-        message.error('点赞失败，请稍后再试');
+        message.error(detail || '点赞失败，请稍后再试');
       }
     },
   });
 
-  const disabled = likedByMe || likeMutation.isPending;
-  const activeHover = isHovered && !disabled;
-
-  const buttonStyle = useMemo<React.CSSProperties>(() => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    minWidth: 116,
-    padding: '12px 32px',
-    borderRadius: 'var(--radius-xl)',
-    border: likedByMe ? '1px solid rgba(239,68,68,0.55)' : '1px solid rgba(239,68,68,0.25)',
-    background: likedByMe || activeHover ? 'rgba(239,68,68,0.22)' : 'rgba(239,68,68,0.08)',
-    boxShadow: likedByMe || activeHover ? '0 0 32px rgba(239,68,68,0.32)' : '0 0 24px rgba(239,68,68,0.12)',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    transform: activeHover ? 'scale(1.06)' : 'scale(1)',
-    transition: 'all 0.3s var(--ease-out)',
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: 700,
-    fontFamily: 'var(--font-mono)',
-    letterSpacing: '0.5px',
-    userSelect: 'none',
-    outline: 'none',
-  }), [activeHover, disabled, likedByMe]);
+  const disabled = !resolvedTargetId || likedByMe || likeMutation.isPending;
 
   const handleLike = () => {
-    if (likedByMe || likeMutation.isPending) return;
+    if (!resolvedTargetId || likedByMe || likeMutation.isPending) return;
     if (!isUserLoggedIn()) {
       message.warning('请先登录后再点赞');
       return;
@@ -76,31 +85,40 @@ export const LikeSection: React.FC<LikeSectionProps> = ({ taskId, likes, contain
     likeMutation.mutate();
   };
 
+  const buttonClassName = [
+    'task-detail-like-button',
+    likedByMe ? 'task-detail-like-button--liked' : '',
+    likeMutation.isPending ? 'task-detail-like-button--pending' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 28,
-      animation: 'fadeInUp 0.4s var(--ease-out) 0.3s both',
-      ...containerStyle,
-    }}>
+    <div
+      className="task-detail-like-section"
+      style={containerStyle}
+    >
       <button
         type="button"
         aria-label={likedByMe ? `已点赞，当前${likes}个赞` : `点赞，当前${likes}个赞`}
         onClick={handleLike}
         disabled={disabled}
-        style={buttonStyle}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        className={buttonClassName}
       >
+        <span className="task-detail-like-button__particles" aria-hidden="true">
+          {LIKE_ENERGY_PARTICLES.map((index) => (
+            <span key={index} className="task-detail-like-button__particle" />
+          ))}
+        </span>
         {likedByMe ? (
-          <HeartFilled style={{ fontSize: 22, color: '#ef4444', filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.5))' }} />
+          <HeartFilled className="task-detail-like-button__icon" />
         ) : (
-          <HeartOutlined style={{ fontSize: 22, color: '#ef4444', filter: 'drop-shadow(0 0 8px rgba(239,68,68,0.5))' }} />
+          <HeartOutlined className="task-detail-like-button__icon" />
         )}
-        <span>{likes}</span>
       </button>
+      <div className="task-detail-like-summary" aria-hidden="true">
+        <span className="task-detail-like-summary__line" />
+        <span className="task-detail-like-button__count">{likes}</span>
+        <span className="task-detail-like-summary__line" />
+      </div>
     </div>
   );
 };

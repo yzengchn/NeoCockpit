@@ -1,5 +1,6 @@
-
 import React, { useCallback, useEffect, useRef } from 'react';
+import { cancelAnimationFrameSafe, requestAnimationFrameSafe } from '@/utils/animation';
+import { observeElementResize } from '@/utils/observers';
 
 interface MeshJson {
   type?: string;
@@ -967,7 +968,7 @@ export const AvatarViewer: React.FC<AvatarViewerProps> = ({
     canvas.addEventListener('dblclick', onDblClick);
 
     const render = (time: number) => {
-      animationRef.current = requestAnimationFrame(render);
+      animationRef.current = requestAnimationFrameSafe(render);
       const widthPx = canvas.width;
       const heightPx = canvas.height;
       if (widthPx === 0 || heightPx === 0) return;
@@ -1002,10 +1003,10 @@ export const AvatarViewer: React.FC<AvatarViewerProps> = ({
       gl.bindVertexArray(null);
     };
 
-    animationRef.current = requestAnimationFrame(render);
+    animationRef.current = requestAnimationFrameSafe(render);
 
     return () => {
-      cancelAnimationFrame(animationRef.current);
+      cancelAnimationFrameSafe(animationRef.current);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
@@ -1037,7 +1038,7 @@ export const AvatarViewer: React.FC<AvatarViewerProps> = ({
     return () => {
       cancelled = true;
       if (cleanup) cleanup();
-      cancelAnimationFrame(animationRef.current);
+      cancelAnimationFrameSafe(animationRef.current);
     };
   }, [initGL]);
 
@@ -1057,9 +1058,7 @@ export const AvatarViewer: React.FC<AvatarViewerProps> = ({
     };
     updateSize();
 
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(container);
-    return () => observer.disconnect();
+    return observeElementResize(container, updateSize);
   }, [width, height]);
 
   return (
@@ -1097,7 +1096,7 @@ export const AvatarViewer: React.FC<AvatarViewerProps> = ({
         <span style={{
           fontSize: 11,
           color: 'var(--c-text-muted)',
-          fontWeight: 600,
+          fontWeight: 500,
           letterSpacing: '1px',
           textTransform: 'uppercase',
         }}>

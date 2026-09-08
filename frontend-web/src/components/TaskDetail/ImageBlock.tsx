@@ -38,16 +38,17 @@ export const ImageBlock: React.FC<ImageBlockProps> = ({ label, src, alt }) => {
 
   return (
     <>
-      <Text style={imageLabel}>{label}</Text>
-      <div style={imageFrame}>
+      <Text className="task-detail-image-block__label" style={imageLabel}>{label}</Text>
+      <div className="task-detail-image-block__frame" style={imageFrame}>
         <button
+          className="task-detail-image-block__button"
           type="button"
           aria-label={`查看${label}大图`}
           title="点击查看大图"
           onClick={() => setPreviewOpen(true)}
           style={previewButtonStyle}
         >
-          <img src={imageSrc} alt={alt} style={stableImageStyle} />
+          <img src={imageSrc} alt={alt} loading="lazy" decoding="async" style={stableImageStyle} />
         </button>
       </div>
       <Image

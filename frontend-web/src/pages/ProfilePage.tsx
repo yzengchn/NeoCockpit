@@ -1,19 +1,24 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, message, Popconfirm, Row, Col, Tag, Table, Space } from 'antd';
-import { ArrowLeftOutlined, UserOutlined, CheckCircleFilled, CalendarOutlined, FireOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
-import { glassCard, gradientHeading } from '@/constants/styles';
+import { App as AntdApp, Card, Row, Col, Table } from 'antd';
+import {
+  UserOutlined, CalendarOutlined, FireOutlined,
+  EyeOutlined, ThunderboltOutlined,
+} from '@ant-design/icons';
+import { AppHeader } from '@/components/AppHeader';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { userApi, taskApi } from '@/services/api';
-import { ACTION_LABELS, MyTaskListItem, TaskStatus } from '@/types/task';
-import { getStoredSignature } from '@/services/api';
-import type { InkSignature } from '@/types/task';
-import { statusConfig } from '@/constants/status';
+import { userApi, getStoredSignature } from '@/services/api';
+import { useUser } from '@/contexts/UserContext';
+import { useNotifications } from '@/hooks/useNotifications';
+import { ACTION_LABELS, InkSignature, UserInfo } from '@/types/task';
+import { usePresence } from '@/hooks/usePresence';
+import AuthModal from '@/components/AuthModal';
+import './ProfilePage.css';
 
 const DIR_ARROWS = ["→", "↘", "↓", "↙", "←", "↖", "↑", "↗"];
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
 
-/* ─── SignatureStroke: raw ink stroke with hover mask ─── */
+/* ─── SignatureStroke ─── */
 const SignatureStroke: React.FC<{ signature: InkSignature; size?: number }> = ({
   signature,
   size = 200,
@@ -67,13 +72,11 @@ const SignatureStroke: React.FC<{ signature: InkSignature; size?: number }> = ({
             fill="#ef4444" stroke="rgba(239,68,68,0.3)" strokeWidth={2} />;
         })()}
       </svg>
-      {/* Hover mask */}
       {!hovered && (
         <div style={{
           position: 'absolute', inset: 0,
           borderRadius: 12,
           background: 'rgba(8,9,13,0.92)',
-          backdropFilter: 'blur(8px)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           gap: 6,
           color: 'var(--c-text-muted)', fontSize: 12,
@@ -87,7 +90,7 @@ const SignatureStroke: React.FC<{ signature: InkSignature; size?: number }> = ({
   );
 };
 
-/* ─── SignatureGrid: 3×3 grid with traversal path ─── */
+/* ─── SignatureGrid ─── */
 const SignatureGrid: React.FC<{ signature: InkSignature; size?: number }> = ({
   signature,
   size = 200,
@@ -115,19 +118,12 @@ const SignatureGrid: React.FC<{ signature: InkSignature; size?: number }> = ({
         type="button"
         onClick={() => setVisible(true)}
         style={{
-          width: '100%',
-          minHeight: size,
-          border: '1px solid rgba(99,102,241,0.15)',
-          borderRadius: 12,
-          background: 'rgba(14,16,24,0.42)',
+          width: '100%', minHeight: size,
+          border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+          background: 'rgba(255,255,255,0.04)',
           color: 'var(--c-text-muted)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 8,
-          cursor: 'pointer',
-          padding: 12,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          gap: 8, cursor: 'pointer', padding: 12,
         }}
       >
         <EyeOutlined style={{ fontSize: 18, color: 'var(--c-accent)' }} />
@@ -141,15 +137,8 @@ const SignatureGrid: React.FC<{ signature: InkSignature; size?: number }> = ({
       type="button"
       onClick={() => setVisible(false)}
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 8,
-        width: '100%',
-        border: 'none',
-        background: 'transparent',
-        padding: 0,
-        cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        width: '100%', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer',
       }}
     >
       <svg width={size} height={size} style={{ borderRadius: 12, background: 'rgba(14,16,24,0.6)' }}>
@@ -194,17 +183,6 @@ const SignatureGrid: React.FC<{ signature: InkSignature; size?: number }> = ({
             >{DIR_ARROWS[dir]}</text>
           );
         })}
-        {Array.from({ length: gridSize * gridSize }, (_, i) => {
-          const col = i % gridSize;
-          const row = Math.floor(i / gridSize);
-          if (!uniqueCells.has(i)) return null;
-          return (
-            <text key={`num-${i}`}
-              x={col * cellSize + cellSize / 2} y={row * cellSize + cellSize / 2 + 5}
-              textAnchor="middle" fill="rgba(129,140,248,0.5)" fontSize={12} fontWeight={700}
-            >{i}</text>
-          );
-        })}
         {traversal.length > 0 && (() => {
           const start = cellCenters.get(traversal[0])!;
           const end = cellCenters.get(traversal[traversal.length - 1])!;
@@ -221,7 +199,7 @@ const SignatureGrid: React.FC<{ signature: InkSignature; size?: number }> = ({
   );
 };
 
-/* ─── Check-in calendar ─── */
+/* ─── CheckInCalendar ─── */
 const CheckInCalendar: React.FC<{
   checkedDates: string[];
   todayChecked: boolean;
@@ -251,60 +229,45 @@ const CheckInCalendar: React.FC<{
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <CalendarOutlined style={{ color: '#6366f1', fontSize: 18 }} />
-        <span style={{ color: 'var(--c-text-secondary)', fontWeight: 600, fontSize: 14 }}>签到日历</span>
-        <span style={{ color: 'var(--c-text-muted)', fontSize: 12, marginLeft: 'auto' }}>{month}</span>
+      <div className="profile-checkin__header">
+        <CalendarOutlined className="profile-checkin__icon" />
+        <span className="profile-checkin__label">签到日历</span>
+        <span className="profile-checkin__month">{month}</span>
       </div>
 
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 16,
-        marginBottom: 16, padding: '12px 16px',
-        borderRadius: 12,
-        background: todayChecked ? 'rgba(34,197,94,0.08)' : 'rgba(99,102,241,0.06)',
-        border: `1px solid ${todayChecked ? 'rgba(34,197,94,0.2)' : 'rgba(99,102,241,0.15)'}`,
-      }}>
+      <div className={`profile-checkin__streak-bar ${todayChecked ? 'profile-checkin__streak-bar--checked' : 'profile-checkin__streak-bar--unchecked'}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
-          <FireOutlined style={{ color: streak > 0 ? '#f59e0b' : 'var(--c-text-muted)', fontSize: 18 }} />
-          <span style={{ color: 'var(--c-text-secondary)', fontSize: 13 }}>
-            连续签到 <b style={{ color: streak > 0 ? '#f59e0b' : 'var(--c-text-muted)', fontFamily: 'var(--font-mono)' }}>{streak}</b> 天
+          <FireOutlined className="profile-checkin__streak-fire" style={{ color: streak > 0 ? '#f59e0b' : 'var(--c-text-muted)' }} />
+          <span className="profile-checkin__streak-text">
+            连续签到 <b className="profile-checkin__streak-count" style={{ color: streak > 0 ? '#f59e0b' : 'var(--c-text-muted)' }}>{streak}</b> 天
           </span>
         </div>
-        <Button
-          type="primary"
-          size="small"
-          loading={checking}
-          disabled={todayChecked}
+        <button
+          type="button"
+          className={`profile-checkin__btn ${todayChecked ? 'profile-checkin__btn--done' : 'profile-checkin__btn--active'}`}
+          disabled={todayChecked || checking}
           onClick={onCheckIn}
-          style={{
-            borderRadius: 8, fontWeight: 600,
-            background: todayChecked ? 'rgba(34,197,94,0.2)' : 'linear-gradient(135deg, #6366f1, #06b6d4)',
-            border: 'none',
-            color: todayChecked ? '#22c55e' : '#fff',
-          }}
         >
           {todayChecked ? '✓ 已签到' : '签到 +10💰'}
-        </Button>
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, textAlign: 'center' }}>
+      <div className="profile-checkin__calendar">
         {WEEKDAYS.map(d => (
-          <div key={d} style={{ fontSize: 11, fontWeight: 600, padding: '4px 0', color: 'var(--c-text-muted)' }}>{d}</div>
+          <div key={d} className="profile-checkin__weekday">{d}</div>
         ))}
         {cells.map((day, idx) => {
           if (day === null) return <div key={`blank-${idx}`} />;
           const dateStr = `${month}-${String(day).padStart(2, '0')}`;
           const checked = checkedSet.has(dateStr);
           const isToday = dateStr === todayStr;
+          let cls = 'profile-checkin__day';
+          if (checked) cls += ' profile-checkin__day--checked';
+          else if (isToday) cls += ' profile-checkin__day--today';
+          else cls += ' profile-checkin__day--normal';
           return (
-            <div key={day} style={{
-              padding: '6px 0', borderRadius: 8,
-              fontSize: 13, fontWeight: isToday ? 700 : 400,
-              color: checked ? '#22c55e' : isToday ? '#6366f1' : 'var(--c-text-muted)',
-              background: checked ? 'rgba(34,197,94,0.1)' : isToday ? 'rgba(99,102,241,0.1)' : 'transparent',
-            }}>
+            <div key={day} className={cls}>
               {day}
-              {checked && <CheckCircleFilled style={{ position: 'absolute', top: 2, right: 2, fontSize: 8, color: '#22c55e' }} />}
             </div>
           );
         })}
@@ -315,15 +278,35 @@ const CheckInCalendar: React.FC<{
 
 /* ─── ProfilePage ─── */
 const ProfilePage: React.FC = () => {
+  const { message } = AntdApp.useApp();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [checking, setChecking] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const { currentUser, login, logout } = useUser();
+  const {
+    notifications,
+    unreadNotificationCount,
+    notificationLoading,
+    handleNotificationPanelOpen,
+    handleMarkMessageRead,
+    handleMarkAllNotificationsRead,
+  } = useNotifications(currentUser?.id);
 
-  const user = useMemo(() => {
-    const raw = localStorage.getItem('aigc_user_info');
-    try { return raw ? JSON.parse(raw) : null; } catch { return null; }
-  }, []);
+  usePresence();
 
+  const handleUserLogin = useCallback((token: string, user: Record<string, unknown>, signature?: InkSignature) => {
+    login(token, user as unknown as UserInfo, signature);
+    setAuthModalOpen(false);
+  }, [login]);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    queryClient.invalidateQueries();
+    navigate('/');
+  }, [logout, navigate, queryClient]);
+
+  const user = currentUser;
   const signature = useMemo(() => getStoredSignature(), []);
 
   const { data: creditsData } = useQuery({
@@ -349,41 +332,6 @@ const ProfilePage: React.FC = () => {
   });
   const creditHistory = creditHistoryData?.pages.flatMap(p => p.items) ?? [];
 
-  const { data: myTasksData, fetchNextPage: fetchNextTaskPage, hasNextPage: hasMoreTasks } = useInfiniteQuery({
-    queryKey: ['myTasks'],
-    queryFn: ({ pageParam = 0 }) => taskApi.listMyTasks(pageParam, 6),
-    getNextPageParam: (lastPage, allPages) => {
-      const loaded = allPages.reduce((sum, p) => sum + p.items.length, 0);
-      return loaded < lastPage.total ? loaded : undefined;
-    },
-    initialPageParam: 0,
-  });
-  const myTasks = myTasksData?.pages.flatMap(p => p.items) ?? [];
-
-  const handleDeleteTask = useCallback(async (taskId: string) => {
-    try {
-      const result = await taskApi.deleteMyTask(taskId);
-      message.success(result.detail || '任务已删除');
-      queryClient.invalidateQueries({ queryKey: ['myTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['taskStats'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['likeRankingTasks'] });
-      queryClient.invalidateQueries({ queryKey: ['viewRankingTasks'] });
-    } catch (error) {
-      const err = error as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail || '删除失败，请稍后重试');
-    }
-  }, [queryClient]);
-
-  const handleScrollLoad = useCallback((e: React.UIEvent<HTMLDivElement>, fetchNext: () => void, hasMore: boolean | undefined) => {
-    const el = e.currentTarget;
-    if (!hasMore) return;
-    const threshold = 40;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < threshold) {
-      fetchNext();
-    }
-  }, []);
-
   const handleCheckIn = useCallback(async () => {
     setChecking(true);
     try {
@@ -397,290 +345,209 @@ const ProfilePage: React.FC = () => {
     } finally {
       setChecking(false);
     }
-  }, [refetchCheckIn, queryClient]);
+  }, [message, refetchCheckIn, queryClient]);
 
   if (!user) {
     return (
-      <div style={{ padding: 24, textAlign: 'center', color: 'var(--c-text-muted)' }}>
-        请先登录后查看个人中心
-        <Button type="link" onClick={() => navigate('/')}>返回首页</Button>
-      </div>
+      <>
+        <AppHeader
+          currentUser={currentUser}
+          notifications={notifications}
+          unreadNotificationCount={unreadNotificationCount}
+          notificationLoading={notificationLoading}
+          onLogin={() => setAuthModalOpen(true)}
+          onLogout={handleLogout}
+          onMarkMessageRead={handleMarkMessageRead}
+          onMarkAllRead={handleMarkAllNotificationsRead}
+          onNotificationPanelOpen={handleNotificationPanelOpen}
+        />
+        <div className="web-page-shell profile-page" style={{ maxWidth: 1200, margin: '0 auto', padding: '120px 24px 24px', textAlign: 'center' }}>
+          <div style={{ color: 'rgba(200,216,245,0.62)', fontSize: 16, marginBottom: 16 }}>
+            登录后可以查看个人中心
+          </div>
+          <button
+            type="button"
+            className="profile-logout-btn"
+            style={{ width: 'auto', margin: 0, padding: '0 20px' }}
+            onClick={() => navigate('/')}
+          >
+            返回首页
+          </button>
+        </div>
+        <AuthModal
+          open={authModalOpen}
+          onLogin={handleUserLogin}
+          onRegister={userApi.register}
+          onLoginBySignature={userApi.login}
+          onCancel={() => setAuthModalOpen(false)}
+        />
+      </>
     );
   }
 
   return (
-    <div className="web-page-shell profile-page" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-        <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => navigate('/')}
-          style={{ color: 'var(--c-text-muted)' }} />
-        <h2 style={gradientHeading}>个人中心</h2>
+    <>
+      <AppHeader
+        currentUser={currentUser}
+        notifications={notifications}
+        unreadNotificationCount={unreadNotificationCount}
+        notificationLoading={notificationLoading}
+        onLogin={() => setAuthModalOpen(true)}
+        onLogout={handleLogout}
+        onMarkMessageRead={handleMarkMessageRead}
+        onMarkAllRead={handleMarkAllNotificationsRead}
+        onNotificationPanelOpen={handleNotificationPanelOpen}
+      />
+      <div className="web-page-shell profile-page" style={{ maxWidth: 1200, margin: '0 auto', padding: '96px 24px 24px' }}>
+        {/* ── Section title ── */}
+        <h1 className="profile-section-title" style={{ marginBottom: 24 }}>
+          个人中心<span className="profile-section-title__spark">✦</span>
+        </h1>
+
+        <Row gutter={[24, 24]}>
+          {/* ── Left column ── */}
+          <Col xs={24} lg={16}>
+            <Card className="profile-page__user-card" styles={{ body: { padding: 28 } }}>
+              {/* User hero */}
+              <div className="profile-hero">
+                <span className="profile-hero__avatar">
+                  <UserOutlined />
+                </span>
+                <div>
+                  <div className="profile-hero__name">{user.nick_name}</div>
+                  {user.created_at && (
+                    <div className="profile-hero__date">
+                      注册时间：{new Date(user.created_at).toLocaleDateString('zh-CN')}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Credits balance */}
+              <div className="profile-credits" style={{ '--accent': '#eab308' } as React.CSSProperties}>
+                <div className="profile-credits__glow" />
+                <div className="profile-credits__row">
+                  <span className="profile-credits__badge"><ThunderboltOutlined /></span>
+                  <span className="profile-credits__value">{credits ?? '...'}</span>
+                </div>
+                <span className="profile-credits__label">积分余额</span>
+              </div>
+
+              {/* Price breakdown */}
+              {creditPrices && creditPrices.length > 0 && (
+                <div className="profile-prices">
+                  {creditPrices.map((p: { action: string; price: number; label: string }) => {
+                    const canAfford = (credits ?? 0) >= p.price;
+                    return (
+                      <div key={p.action} className={`profile-price-item ${canAfford ? 'profile-price-item--afford' : 'profile-price-item--cant'}`}>
+                        <span className="profile-price-item__label" style={{ color: canAfford ? 'rgba(200,216,245,0.8)' : '#ef4444' }}>{p.label}</span>
+                        <span className="profile-price-item__cost" style={{ color: p.price === 0 ? '#22c55e' : canAfford ? '#eab308' : '#ef4444' }}>
+                          {p.price === 0 ? '免费' : `${p.price}💰`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Signature display */}
+              {signature ? (
+                <div>
+                  <div className="profile-signature__label">签名图案</div>
+                  <div style={{ display: 'flex', gap: 16, width: '100%' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <SignatureStroke signature={signature} size={180} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <SignatureGrid signature={signature} size={180} />
+                    </div>
+                  </div>
+                  <div className="profile-signature__hint">
+                    💡 左侧原始笔迹（悬停查看），右侧量化路径图。绿=起笔，红=收笔。
+                  </div>
+                </div>
+              ) : (
+                <div className="profile-empty">签名数据未保存</div>
+              )}
+
+              {/* Logout */}
+              <button type="button" className="profile-logout-btn" onClick={handleLogout}>
+                退出登录
+              </button>
+            </Card>
+          </Col>
+
+          {/* ── Right column ── */}
+          <Col xs={24} lg={8}>
+            {/* Check-in calendar */}
+            {checkInData && (
+              <Card className="profile-page__checkin-card" styles={{ body: { padding: 24 } }}>
+                <CheckInCalendar
+                  checkedDates={checkInData.checked_dates}
+                  todayChecked={checkInData.today_checked}
+                  streak={checkInData.streak}
+                  month={checkInData.month}
+                  onCheckIn={handleCheckIn}
+                  checking={checking}
+                />
+              </Card>
+            )}
+
+            {/* Credit history */}
+            <Card className="profile-page__credits-card" style={{ marginTop: 24 }} styles={{ body: { padding: 24 } }}>
+              <div className="profile-card-heading">积分使用记录</div>
+              {creditHistory.length > 0 ? (
+                <div
+                  className="profile-history-scroll"
+                  style={{ maxHeight: 440, overflowY: 'auto' }}
+                  onScroll={(e) => {
+                    const el = e.currentTarget;
+                    if (!hasMoreCredits) return;
+                    if (el.scrollHeight - el.scrollTop - el.clientHeight < 40) {
+                      fetchNextCreditPage();
+                    }
+                  }}
+                >
+                  <Table
+                    dataSource={creditHistory}
+                    rowKey="id"
+                    size="small"
+                    pagination={false}
+                    columns={[
+                      {
+                        title: '操作', dataIndex: 'action', key: 'action', width: 100,
+                        render: (action: string) => ACTION_LABELS[action] || action,
+                      },
+                      {
+                        title: '积分变动', dataIndex: 'credits_cost', key: 'credits_cost', width: 80,
+                        render: (cost: number) => cost < 0
+                          ? <span style={{ color: '#22c55e', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>+{Math.abs(cost)}</span>
+                          : <span style={{ color: '#ef4444', fontWeight: 500, fontFamily: 'var(--font-mono)' }}>-{cost}</span>,
+                      },
+                      {
+                        title: '时间', dataIndex: 'created_at', key: 'created_at',
+                        render: (date: string) => date ? new Date(date).toLocaleString('zh-CN') : '-',
+                      },
+                    ]}
+                  />
+                  {hasMoreCredits && <div className="profile-load-more">向下滚动加载更多...</div>}
+                </div>
+              ) : (
+                <div className="profile-empty">暂无积分使用记录</div>
+              )}
+            </Card>
+          </Col>
+        </Row>
       </div>
 
-      <Row className="profile-page__main-row" gutter={[24, 24]}>
-        {/* ── Left column ── */}
-        <Col xs={24} lg={16}>
-          <Card className="profile-page__user-card" style={glassCard} styles={{ body: { padding: 24 } }}>
-            {/* User info */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-              <div style={{
-                width: 48, height: 48, borderRadius: '50%',
-                background: 'linear-gradient(135deg, #6366f1, #06b6d4)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22, color: '#fff',
-              }}>
-                <UserOutlined />
-              </div>
-              <div>
-                <div style={{ color: 'var(--c-text)', fontWeight: 600, fontSize: 16 }}>{user.nick_name}</div>
-                {user.created_at && (
-                  <div style={{ color: 'var(--c-text-muted)', fontSize: 12, marginTop: 2 }}>
-                    注册时间：{new Date(user.created_at).toLocaleDateString('zh-CN')}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Credits */}
-            <div style={{
-              padding: '14px 16px', borderRadius: 12, marginBottom: 20,
-              background: 'rgba(234,179,8,0.06)',
-              border: '1px solid rgba(234,179,8,0.12)',
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <span style={{ color: 'var(--c-text-secondary)', fontSize: 12, fontWeight: 600 }}>积分余额</span>
-              <span style={{
-                fontSize: 14, fontWeight: 800, fontFamily: 'var(--font-mono)',
-                color: credits != null && credits > 0 ? '#eab308' : '#ef4444',
-              }}>
-                {credits ?? '...'}
-              </span>
-            </div>
-
-            {/* Price breakdown */}
-            {creditPrices && creditPrices.length > 0 && (
-              <div style={{
-                marginBottom: 20,
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-                gap: 6,
-              }}>
-                {creditPrices.map((p: { action: string; price: number; label: string }) => {
-                  const canAfford = (credits ?? 0) >= p.price;
-                  return (
-                    <div key={p.action} style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '6px 10px', borderRadius: 'var(--radius-xs)',
-                      border: `1px solid ${canAfford ? 'rgba(99,102,241,0.14)' : 'rgba(239,68,68,0.14)'}`,
-                      background: canAfford ? 'rgba(99,102,241,0.04)' : 'rgba(239,68,68,0.04)',
-                    }}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 600, flex: 1,
-                        color: canAfford ? 'var(--c-text-secondary)' : '#ef4444',
-                      }}>{p.label}</span>
-                      <span style={{
-                        fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        color: p.price === 0 ? '#22c55e' : canAfford ? '#eab308' : '#ef4444',
-                      }}>
-                        {p.price === 0 ? '免费' : `${p.price}💰`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Signature display */}
-            {signature ? (
-              <div>
-                <div style={{ color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.5px', marginBottom: 10 }}>
-                  签名图案
-                </div>
-                <div className="profile-page__signature-grid" style={{ display: 'flex', gap: 16, width: '100%' }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <SignatureStroke signature={signature} size={180} />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <SignatureGrid signature={signature} size={180} />
-                </div>
-                </div>
-                <div style={{
-                  color: 'var(--c-text-muted)', fontSize: 12, marginTop: 10,
-                  padding: '6px 10px', background: 'rgba(234,179,8,0.06)',
-                  borderRadius: 8, border: '1px solid rgba(234,179,8,0.12)',
-                }}>
-                  💡 左侧原始笔迹（悬停查看），右侧量化路径图。绿=起笔，红=收笔。
-                </div>
-              </div>
-            ) : (
-              <div style={{ color: 'var(--c-text-muted)', fontSize: 13, padding: '16px 0', textAlign: 'center' }}>
-                签名数据未保存
-              </div>
-            )}
-          </Card>
-
-          {/* My tasks list */}
-          <Card className="profile-page__tasks-card" style={{ ...glassCard, marginTop: 16 }} styles={{ body: { padding: 24 } }}>
-            <div style={{ color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.5px', marginBottom: 12 }}>
-              我创建的任务
-            </div>
-            {myTasks.length > 0 ? (
-              <div
-                className="profile-page__table-scroll"
-                style={{ maxHeight: 340, overflowY: 'auto' }}
-                onScroll={(e) => handleScrollLoad(e, fetchNextTaskPage, hasMoreTasks)}
-              >
-              <Table
-                dataSource={myTasks}
-                rowKey="task_id"
-                size="small"
-                pagination={false}
-                columns={[
-                  {
-                    title: '用户输入', dataIndex: 'user_input', key: 'user_input',
-                    ellipsis: true,
-                    render: (text: string) => (
-                      <span title={text} style={{ color: 'var(--c-text)', fontSize: 12, width: '100%', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {text}
-                      </span>
-                    ),
-                  },
-                  {
-                    title: '状态', dataIndex: 'status', key: 'status', width: 90,
-                    render: (status: TaskStatus) => {
-                      const cfg = statusConfig[status];
-                      return cfg ? (
-                        <Tag style={{
-                          borderRadius: 6, fontSize: 11, fontWeight: 600,
-                          color: cfg.color,
-                          background: `${cfg.color}18`,
-                          border: `1px solid ${cfg.color}30`,
-                        }}>
-                          {cfg.text}
-                        </Tag>
-                      ) : <span>{status}</span>;
-                    },
-                  },
-                  {
-                    title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 140,
-                    render: (date: string) => (
-                      <span style={{ color: 'var(--c-text-muted)', fontSize: 12, fontFamily: 'var(--font-mono)' }}>
-                        {date ? new Date(date).toLocaleString('zh-CN') : '-'}
-                      </span>
-                    ),
-                  },
-                  {
-                    title: '', key: 'action', width: 94,
-                    render: (_: unknown, record: MyTaskListItem) => (
-                      <Space size={6}>
-                        <Button type="link" size="small"
-                          style={{ color: 'var(--c-accent)', padding: 0, fontSize: 12 }}
-                          onClick={() => navigate(`/tasks/${record.task_id}`)}
-                        >
-                          查看
-                        </Button>
-                        <Popconfirm
-                          title="删除任务"
-                          okText="删除"
-                          cancelText="取消"
-                          okButtonProps={{ danger: true }}
-                          onConfirm={() => handleDeleteTask(record.task_id)}
-                        >
-                          <Button
-                            type="text"
-                            danger
-                            size="small"
-                            icon={<DeleteOutlined />}
-                            aria-label="删除任务"
-                            title="删除任务"
-                            style={{ padding: 0, width: 22, height: 22 }}
-                          />
-                        </Popconfirm>
-                      </Space>
-                    ),
-                  },
-                ]}
-              />
-              {hasMoreTasks && (
-                <div style={{ textAlign: 'center', padding: '8px 0', color: 'var(--c-text-muted)', fontSize: 12 }}>
-                  向下滚动加载更多...
-                </div>
-              )}
-              </div>
-            ) : (
-              <div style={{ color: 'var(--c-text-muted)', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
-                暂无创建的任务
-              </div>
-            )}
-          </Card>
-        </Col>
-
-        {/* ── Right column ── */}
-        <Col xs={24} lg={8}>
-          {/* Check-in calendar */}
-          {checkInData && (
-            <Card className="profile-page__checkin-card" style={glassCard} styles={{ body: { padding: 24 } }}>
-              <CheckInCalendar
-                checkedDates={checkInData.checked_dates}
-                todayChecked={checkInData.today_checked}
-                streak={checkInData.streak}
-                month={checkInData.month}
-                onCheckIn={handleCheckIn}
-                checking={checking}
-              />
-            </Card>
-          )}
-
-          {/* Credit history */}
-          <Card className="profile-page__credits-card" style={{ ...glassCard, marginTop: 16 }} styles={{ body: { padding: 24 } }}>
-            <div style={{ color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.5px', marginBottom: 12 }}>
-              积分使用记录
-            </div>
-            {creditHistory.length > 0 ? (
-              <div
-                className="profile-page__table-scroll"
-                style={{ maxHeight: 440, overflowY: 'auto' }}
-                onScroll={(e) => handleScrollLoad(e, fetchNextCreditPage, hasMoreCredits)}
-              >
-              <Table
-                dataSource={creditHistory}
-                rowKey="id"
-                size="small"
-                pagination={false}
-                columns={[
-                  {
-                    title: '操作', dataIndex: 'action', key: 'action', width: 100,
-                    render: (action: string) => ACTION_LABELS[action] || action,
-                  },
-                  {
-                    title: '积分变动', dataIndex: 'credits_cost', key: 'credits_cost', width: 80,
-                    render: (cost: number) => cost < 0
-                      ? <span style={{ color: '#22c55e', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>+{Math.abs(cost)}</span>
-                      : <span style={{ color: '#ef4444', fontWeight: 600, fontFamily: 'var(--font-mono)' }}>-{cost}</span>,
-                  },
-
-                  {
-                    title: '时间', dataIndex: 'created_at', key: 'created_at',
-                    render: (date: string) => date ? new Date(date).toLocaleString('zh-CN') : '-',
-                  },
-                ]}
-              />
-              {hasMoreCredits && (
-                <div style={{ textAlign: 'center', padding: '8px 0', color: 'var(--c-text-muted)', fontSize: 12 }}>
-                  向下滚动加载更多...
-                </div>
-              )}
-              </div>
-            ) : (
-              <div style={{ color: 'var(--c-text-muted)', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
-                暂无积分使用记录
-              </div>
-            )}
-          </Card>
-
-        </Col>
-      </Row>
-    </div>
+      <AuthModal
+        open={authModalOpen}
+        onLogin={handleUserLogin}
+        onRegister={userApi.register}
+        onLoginBySignature={userApi.login}
+        onCancel={() => setAuthModalOpen(false)}
+      />
+    </>
   );
 };
 

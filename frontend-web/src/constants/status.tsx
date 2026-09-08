@@ -75,7 +75,7 @@ export const statusConfig: Record<TaskStatus, StatusConfig> = {
   },
   [TaskStatus.COMPOSITING]: {
     color: '#f59e0b',
-    text: '合成预览',
+    text: '构建资源',
     icon: <LoadingOutlined />,
     iconBg: 'linear-gradient(135deg,#451a03 0%,#78350f 100%)',
     progress: 90,

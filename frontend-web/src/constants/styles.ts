@@ -17,7 +17,7 @@ export const glassCardOverflow: React.CSSProperties = {
 /** Section heading with gradient text. */
 export const gradientHeading: React.CSSProperties = {
   margin: 0,
-  fontWeight: 800,
+  fontWeight: 500,
   background: 'linear-gradient(135deg, var(--c-primary-light), var(--c-accent-light))',
   WebkitBackgroundClip: 'text',
   WebkitTextFillColor: 'transparent',
@@ -46,7 +46,7 @@ export const imageLabel: React.CSSProperties = {
 /** Stat section heading. */
 export const statHeading: React.CSSProperties = {
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 500,
   color: 'var(--c-text-muted)',
   marginBottom: 18,
   letterSpacing: '2px',

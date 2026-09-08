@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { cancelAnimationFrameSafe, requestAnimationFrameSafe } from '@/utils/animation';
+import { observeElementResize } from '@/utils/observers';
 import './styles.css';
 
 interface Portrait3DViewerProps {
@@ -409,7 +411,7 @@ export const Portrait3DViewer: React.FC<Portrait3DViewerProps> = ({
     canvas.addEventListener('dblclick', onDoubleClick);
 
     const render = (time: number) => {
-      animationRef.current = requestAnimationFrame(render);
+      animationRef.current = requestAnimationFrameSafe(render);
       if (canvas.width <= 0 || canvas.height <= 0) return;
 
       const idle = Math.sin(time * 0.00035) * 0.08;
@@ -435,10 +437,10 @@ export const Portrait3DViewer: React.FC<Portrait3DViewerProps> = ({
 
     setReady(true);
     setFailed(false);
-    animationRef.current = requestAnimationFrame(render);
+    animationRef.current = requestAnimationFrameSafe(render);
 
     return () => {
-      cancelAnimationFrame(animationRef.current);
+      cancelAnimationFrameSafe(animationRef.current);
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);
       canvas.removeEventListener('pointerup', onPointerUp);
@@ -468,9 +470,7 @@ export const Portrait3DViewer: React.FC<Portrait3DViewerProps> = ({
     };
 
     updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(container);
-    return () => observer.disconnect();
+    return observeElementResize(container, updateSize);
   }, []);
 
   useEffect(() => {
@@ -497,7 +497,7 @@ export const Portrait3DViewer: React.FC<Portrait3DViewerProps> = ({
       cancelled = true;
       controller.abort();
       if (cleanup) cleanup();
-      cancelAnimationFrame(animationRef.current);
+      cancelAnimationFrameSafe(animationRef.current);
     };
   }, [initGL]);
 

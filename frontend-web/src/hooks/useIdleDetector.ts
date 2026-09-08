@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { addWindowEventListener } from '@/utils/browser';
+import { clearTimeoutSafe, setTimeoutSafe } from '@/utils/timers';
 
 const IDLE_TIMEOUT = 3 * 60 * 1000; // 3 minutes
 
@@ -8,12 +10,12 @@ const IDLE_TIMEOUT = 3 * 60 * 1000; // 3 minutes
  */
 export function useIdleDetector(timeout = IDLE_TIMEOUT) {
   const [isIdle, setIsIdle] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeoutSafe>>();
 
   const resetIdle = useCallback(() => {
     setIsIdle(false);
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setIsIdle(true), timeout);
+    clearTimeoutSafe(timerRef.current);
+    timerRef.current = setTimeoutSafe(() => setIsIdle(true), timeout);
   }, [timeout]);
 
   useEffect(() => {
@@ -23,14 +25,11 @@ export function useIdleDetector(timeout = IDLE_TIMEOUT) {
     // Start the initial timer
     resetIdle();
 
-    for (const e of events) {
-      window.addEventListener(e, handler, { passive: true });
-    }
+    const cleanups = events.map((eventName) => addWindowEventListener(eventName, handler, { passive: true }));
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-      for (const e of events) {
-        window.removeEventListener(e, handler);
-      }
+      clearTimeoutSafe(timerRef.current);
+      timerRef.current = undefined;
+      cleanups.forEach((cleanup) => cleanup());
     };
   }, [resetIdle]);
 

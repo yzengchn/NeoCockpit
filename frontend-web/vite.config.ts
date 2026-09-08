@@ -13,6 +13,22 @@ export default defineConfig({
           if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/react-router-dom/')) {
             return 'vendor-react'
           }
+          if (
+            id.includes('/antd/') ||
+            id.includes('/@ant-design/') ||
+            id.includes('/rc-')
+          ) {
+            return 'vendor-ui'
+          }
+          if (
+            id.includes('/three/') ||
+            id.includes('/three-stdlib/') ||
+            id.includes('/@react-three/') ||
+            id.includes('/draco3d/') ||
+            id.includes('/meshoptimizer/')
+          ) {
+            return 'vendor-three'
+          }
           if (id.includes('/@tanstack/') || id.includes('/axios/')) {
             return 'vendor-data'
           }
@@ -35,6 +51,11 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+      },
+      '/theme-editor': {
+        target: 'http://localhost:5180',
+        changeOrigin: true,
+        ws: true,
       },
     },
   },

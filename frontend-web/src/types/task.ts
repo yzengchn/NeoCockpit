@@ -63,18 +63,48 @@ export interface TaskListItem {
   ai_provider?: string;
   status: TaskStatus;
   background_image_url?: string;
-  preview_image_url?: string;
+  cover_thumb_url?: string | null;
   avatar_image_url?: string;
   likes: number;
   views: number;
   created_at: string;
+  tags?: number[];
+  is_visible?: boolean;
+  published_at?: string | null;
 }
 
-export interface MyTaskListItem {
+// Creator center types (user's own tasks, all statuses)
+
+export interface CreatorTaskListItem {
   task_id: string;
   user_input: string;
+  task_type: TaskType;
+  ai_provider?: string;
   status: TaskStatus;
+  background_image_url?: string;
+  cover_thumb_url?: string | null;
+  avatar_image_url?: string;
+  likes: number;
+  views: number;
+  is_visible: boolean;
+  tags?: number[];
   created_at: string;
+  published_at?: string | null;
+}
+
+export interface CreatorTaskPage {
+  items: CreatorTaskListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface CreatorStats {
+  total: number;
+  completed: number;
+  processing: number;
+  failed: number;
+  by_type: Partial<Record<TaskType, number>>;
 }
 
 export interface TaskActionResult {
@@ -111,6 +141,7 @@ export interface Task extends TaskListItem {
   texture_normal_url?: string;
   logs: LogEntry[];
   output_path?: string;
+  build_tree?: BuildTree;
 }
 
 export interface TaskCreate {
@@ -120,27 +151,31 @@ export interface TaskCreate {
   icon_descriptions?: string[];
 }
 
-export interface TaskComment {
+export type SocialTargetType = 'task' | 'theme_package';
+export type SocialCommentStatus = 'pending' | 'approved' | 'rejected';
+
+export interface SocialComment {
   id: string;
-  task_id: string;
+  target_type: SocialTargetType | string;
+  target_id: string;
   user_id: string;
   author: string;
   parent_id?: string | null;
   reply_to_user_id?: string | null;
   reply_to_author?: string | null;
   content: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: SocialCommentStatus;
   review_reason?: string | null;
   reviewed_at?: string | null;
   created_at: string | null;
 }
 
-export interface TaskCommentListResponse {
-  items: TaskComment[];
+export interface SocialCommentListResponse {
+  items: SocialComment[];
   total: number;
 }
 
-export interface TaskCommentCreate {
+export interface SocialCommentCreate {
   content: string;
   parent_id?: string | null;
 }
@@ -169,7 +204,8 @@ export interface TaskStats {
   by_type: Partial<Record<TaskType, number>>;
 }
 
-export interface OnlineResponse {
+export interface PresenceHeartbeatResponse {
+  ok: boolean;
   total: number;
 }
 
@@ -354,4 +390,167 @@ export interface CreditStats {
 export interface AuthTokenResponse {
   token: string;
   user: UserInfo;
+}
+
+// Inspiration library types
+
+export interface InspirationListItem {
+  task_id: string;
+  user_input: string;
+  task_type: TaskType;
+  cover_thumb_url?: string | null;
+  likes: number;
+  views: number;
+  tags?: number[];
+}
+
+export interface InspirationQuery {
+  q?: string;
+  task_type?: TaskType | 'all';
+  tags?: number[];  // 二级标签ID列表
+  sort?: 'latest' | 'likes' | 'views';
+  page?: number;
+  page_size?: number;
+}
+
+export interface InspirationPage {
+  items: InspirationListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface InspirationDetail {
+  task_id: string;
+  user_input: string;
+  task_type: TaskType;
+  author?: string | null;
+  background_prompt?: string;
+  icon_prompt?: string;
+  normal_detail?: string;
+  view_prompts?: {
+    character_anchor?: string;
+    front?: string;
+    right?: string;
+    back?: string;
+    left?: string;
+  };
+  background_image_url?: string;
+  cover_thumb_url?: string | null;
+  avatar_image_url?: string;
+  icon_image_url?: string;
+  avatar_atlas_url?: string;
+  view_image_urls?: {
+    front?: string;
+    right?: string;
+    back?: string;
+    left?: string;
+  };
+  texture_albedo_url?: string;
+  texture_normal_url?: string;
+  build_tree?: BuildTree;
+  likes: number;
+  views: number;
+  tags?: number[];  // 二级标签ID列表
+  published_at?: string | null;
+}
+
+export interface PopularTag {
+  tag: string;
+  count: number;
+}
+
+// 标签分类（两级联动）
+
+export interface TagCategoryItem {
+  id: number;
+  name: string;
+  parent_id: number | null;
+}
+
+export interface TagCategoryTree {
+  id: number;
+  name: string;
+  children: TagCategoryItem[];
+}
+
+// Theme package browse types
+
+export enum ThemePackageType {
+  FLAT_COCKPIT = 'flat_cockpit',
+  DYNAMIC_COCKPIT = 'dynamic_cockpit',
+  COCKPIT_3D = 'cockpit_3d',
+}
+
+export enum ThemePackageStatus {
+  DRAFT = 'draft',
+  PACKAGING = 'packaging',
+  READY = 'ready',
+  PUBLISHED = 'published',
+  FAILED = 'failed',
+  ARCHIVED = 'archived',
+}
+
+export type ThemePackageSort = 'latest' | 'likes' | 'views';
+
+export interface ThemePackagePublicItem {
+  package_id: string;
+  title: string;
+  description?: string | null;
+  package_type: ThemePackageType | string;
+  status: ThemePackageStatus | string;
+  author?: string | null;
+  cover_thumb_url?: string | null;
+  has_wallpaper: boolean;
+  has_icons: boolean;
+  has_widgets: boolean;
+  has_digital_human: boolean;
+  likes: number;
+  views: number;
+  tags?: number[] | null;
+  published_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ThemePackageItem extends ThemePackagePublicItem {
+  is_published: boolean;
+}
+
+export interface ThemePackageDetail extends ThemePackageItem {
+  is_owner?: boolean;
+  cover_image_url?: string | null;
+  preview_image_urls?: string[] | null;
+  package_size?: number | null;
+  schema_version?: string;
+  target_runtime?: string;
+  min_runtime_version?: string;
+  assets_count?: number;
+  layout_count?: number;
+  tokens_count?: number;
+  components_count?: number;
+}
+
+export interface ThemePackagePage {
+  items: ThemePackageItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ThemePackagePublicPage {
+  items: ThemePackagePublicItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ThemePackageQuery {
+  q?: string;
+  package_type?: ThemePackageType | 'all';
+  tags?: number[];
+  has_digital_human?: boolean;
+  sort?: ThemePackageSort;
+  page?: number;
+  page_size?: number;
 }

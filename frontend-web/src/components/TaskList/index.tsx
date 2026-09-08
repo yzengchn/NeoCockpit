@@ -1,12 +1,27 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Row, Col, Spin, Empty } from 'antd';
 import { FireFilled, HeartFilled } from '@ant-design/icons';
 import { TaskCard } from './TaskCard';
-import { TaskListItem, TaskType } from '@/types/task';
-import { TASK_TYPE_CONFIG } from '@/constants/taskType';
+import { BulkSelectionBar } from '@/components/BulkSelectionBar';
+import { Reveal } from '@/components/Reveal';
+import { useScrollLoadMore } from '@/hooks/useScrollLoadMore';
+import { TaskType } from '@/types/task';
+import type { TaskListItem } from '@/types/task';
+import { TASK_TYPE_CONFIG, TASK_TYPE_ORDER } from '@/constants/taskType';
 
+export type TaskFilter = 'all' | 'likeRanking' | 'viewRanking' | TaskType.WALLPAPER | TaskType.THEME | TaskType.DIGITAL_HUMAN | TaskType.STICKER_PACK | TaskType.DIY;
 
+type RankFilter = Extract<TaskFilter, 'all' | 'likeRanking' | 'viewRanking'>;
 
+const RANK_FILTERS: Array<{
+  key: RankFilter;
+  label: string;
+  icon?: 'like' | 'hot';
+}> = [
+  { key: 'all', label: '我的作品' },
+  { key: 'likeRanking', label: '点赞排行', icon: 'like' },
+  { key: 'viewRanking', label: '热度排行', icon: 'hot' },
+];
 
 interface TaskListProps {
   tasks: TaskListItem[];
@@ -15,91 +30,89 @@ interface TaskListProps {
   counts: Record<TaskFilter, number>;
   hasMore: boolean;
   loadingMore: boolean;
+  isLoggedIn?: boolean;
+  selectionMode?: boolean;
+  selectedTaskIds?: string[];
+  bulkDeleting?: boolean;
   onFilterChange: (filter: TaskFilter) => void;
   onLoadMore: () => void;
+  onSelectionChange?: (taskIds: string[]) => void;
+  onDeleteSelectedTasks?: (taskIds: string[]) => Promise<void> | void;
 }
 
-
-
-export const TaskList: React.FC<TaskListProps> = ({
+export const TaskList = React.memo(function TaskList({
   tasks,
   loading,
   activeFilter,
   counts,
   hasMore,
   loadingMore,
+  isLoggedIn = true,
+  selectionMode = false,
+  selectedTaskIds = [],
+  bulkDeleting = false,
   onFilterChange,
   onLoadMore,
-}) => {
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
-  const [scrollArmed, setScrollArmed] = useState(false);
+  onSelectionChange,
+  onDeleteSelectedTasks,
+}: TaskListProps) {
+  const loadMoreRef = useScrollLoadMore<HTMLDivElement>({
+    hasMore,
+    loadingMore,
+    onLoadMore,
+    resetDeps: [activeFilter],
+  });
 
   const filterOptions: Array<{
     key: TaskFilter;
     label: string;
     count: number;
-    accent: string;
-  }> = [
-    {
-      key: TaskType.WALLPAPER,
-      label: TASK_TYPE_CONFIG[TaskType.WALLPAPER].filterLabel,
-      count: counts[TaskType.WALLPAPER],
-      accent: TASK_TYPE_CONFIG[TaskType.WALLPAPER].accent,
-    },
-    {
-      key: TaskType.THEME,
-      label: TASK_TYPE_CONFIG[TaskType.THEME].filterLabel,
-      count: counts[TaskType.THEME],
-      accent: TASK_TYPE_CONFIG[TaskType.THEME].accent,
-    },
-    {
-      key: TaskType.DIGITAL_HUMAN,
-      label: TASK_TYPE_CONFIG[TaskType.DIGITAL_HUMAN].filterLabel,
-      count: counts[TaskType.DIGITAL_HUMAN],
-      accent: TASK_TYPE_CONFIG[TaskType.DIGITAL_HUMAN].accent,
-    },
-    {
-      key: TaskType.STICKER_PACK,
-      label: TASK_TYPE_CONFIG[TaskType.STICKER_PACK].filterLabel,
-      count: counts[TaskType.STICKER_PACK],
-      accent: TASK_TYPE_CONFIG[TaskType.STICKER_PACK].accent,
-    },
-    {
-      key: TaskType.DIY,
-      label: TASK_TYPE_CONFIG[TaskType.DIY].filterLabel,
-      count: counts[TaskType.DIY],
-      accent: TASK_TYPE_CONFIG[TaskType.DIY].accent,
-    },
-    { key: 'all', label: '任务', count: counts.all, accent: '#6366f1' },
-  ];
+  }> = useMemo(() => [
+    ...TASK_TYPE_ORDER.map((taskType) => ({
+      key: taskType,
+      label: TASK_TYPE_CONFIG[taskType].filterLabel,
+      count: counts[taskType],
+    })),
+    { key: 'all' as const, label: '任务', count: counts.all },
+  ], [counts]);
 
+  const selectedTaskIdSet = useMemo(() => new Set(selectedTaskIds), [selectedTaskIds]);
+  const selectedTaskIdsRef = useRef(selectedTaskIds);
   useEffect(() => {
-    const node = loadMoreRef.current;
-    if (!node || !hasMore) return;
+    selectedTaskIdsRef.current = selectedTaskIds;
+  }, [selectedTaskIds]);
+  const visibleTaskIds = useMemo(() => tasks.map((task) => task.task_id), [tasks]);
+  const allVisibleSelected = visibleTaskIds.length > 0 && visibleTaskIds.every((taskId) => selectedTaskIdSet.has(taskId));
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (scrollArmed && entry.isIntersecting && !loadingMore) {
-          onLoadMore();
-        }
-      },
-      { rootMargin: '160px 0px' },
-    );
+  const handleToggleVisibleSelection = useCallback(() => {
+    if (!onSelectionChange) return;
+    const next = new Set(selectedTaskIdsRef.current);
+    if (allVisibleSelected) {
+      visibleTaskIds.forEach((taskId) => next.delete(taskId));
+    } else {
+      visibleTaskIds.forEach((taskId) => next.add(taskId));
+    }
+    onSelectionChange(Array.from(next));
+  }, [allVisibleSelected, onSelectionChange, visibleTaskIds]);
 
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [hasMore, loadingMore, onLoadMore, scrollArmed]);
+  const handleToggleTaskSelection = useCallback((taskId: string) => {
+    if (!onSelectionChange) return;
+    const next = new Set(selectedTaskIdsRef.current);
+    if (next.has(taskId)) {
+      next.delete(taskId);
+    } else {
+      next.add(taskId);
+    }
+    onSelectionChange(Array.from(next));
+  }, [onSelectionChange]);
 
-  useEffect(() => {
-    setScrollArmed(false);
-    const armLoadMore = () => setScrollArmed(true);
-    window.addEventListener('scroll', armLoadMore, { passive: true, once: true });
-    return () => window.removeEventListener('scroll', armLoadMore);
-  }, [activeFilter]);
+  const handleConfirmDelete = useCallback(() => {
+    return onDeleteSelectedTasks?.(selectedTaskIds);
+  }, [onDeleteSelectedTasks, selectedTaskIds]);
 
   if (loading) {
     return (
-      <div style={{ textAlign: 'center', padding: '80px 0' }}>
+      <div className="task-list-section__loading">
         <Spin size="large" />
       </div>
     );
@@ -107,113 +120,47 @@ export const TaskList: React.FC<TaskListProps> = ({
 
   return (
     <div className="task-list-section">
-      <div className="task-list-toolbar" style={{
-        marginBottom: 22,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 16,
-        flexWrap: 'wrap',
-      }}>
-        <div className="task-list-rank-tabs" style={{ display: 'flex', gap: 0 }}>
-          <button
-            type="button"
-            onClick={() => onFilterChange('all' as TaskFilter)}
-            style={{
-              color: activeFilter === 'all' ? '#fff' : 'var(--c-text-secondary)',
-              fontSize: 14,
-              fontWeight: 700,
-              padding: '4px 16px',
-              minHeight: 28,
-              borderRadius: 'var(--radius-sm) 0 0 var(--radius-sm)',
-              background: activeFilter === 'all' ? 'rgba(99,102,241,0.15)' : 'rgba(99,102,241,0.06)',
-              border: activeFilter === 'all' ? '1px solid rgba(99,102,241,0.5)' : '1px solid var(--c-border)',
-              borderRight: 'none',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: 0,
-              whiteSpace: 'nowrap',
-            }}
-          >所有任务</button>
-          <button
-            type="button"
-            onClick={() => onFilterChange('likeRanking' as TaskFilter)}
-            style={{
-              color: activeFilter === 'likeRanking' ? '#fff' : 'var(--c-text-secondary)',
-              fontSize: 14,
-              fontWeight: 700,
-              padding: '4px 16px',
-              minHeight: 28,
-              borderRadius: 0,
-              background: activeFilter === 'likeRanking' ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.06)',
-              border: activeFilter === 'likeRanking' ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--c-border)',
-              borderRight: 'none',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: 0,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <HeartFilled
-              style={{
-                marginRight: 6,
-                color: '#ef4444',
-              }}
-            />
-            Top100
-          </button>
-          <button
-            type="button"
-            onClick={() => onFilterChange('viewRanking' as TaskFilter)}
-            style={{
-              color: activeFilter === 'viewRanking' ? '#fff' : 'var(--c-text-secondary)',
-              fontSize: 14,
-              fontWeight: 700,
-              padding: '4px 16px',
-              minHeight: 28,
-              borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',
-              background: activeFilter === 'viewRanking' ? 'rgba(6,182,212,0.15)' : 'rgba(99,102,241,0.06)',
-              border: activeFilter === 'viewRanking' ? '1px solid rgba(6,182,212,0.5)' : '1px solid var(--c-border)',
-              cursor: 'pointer',
-              fontFamily: 'var(--font-mono)',
-              letterSpacing: 0,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            <FireFilled
-              style={{
-                marginRight: 6,
-                color: '#f97316',
-              }}
-            />
-            Hot100
-          </button>
+      <div className="task-list-toolbar">
+        <div className="task-list-rank-tabs">
+          {RANK_FILTERS.map((option, index) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onFilterChange(option.key)}
+              aria-pressed={activeFilter === option.key}
+              className={[
+                'task-list-rank-button',
+                `task-list-rank-button--${option.key}`,
+                activeFilter === option.key ? 'is-active' : '',
+                index === 0 ? 'is-first' : '',
+                index === RANK_FILTERS.length - 1 ? 'is-last' : '',
+              ].filter(Boolean).join(' ')}
+            >
+              {option.icon === 'like' && <HeartFilled className="task-list-rank-button__icon" />}
+              {option.icon === 'hot' && <FireFilled className="task-list-rank-button__icon" />}
+              {option.label}
+            </button>
+          ))}
         </div>
-        <div className="task-list-type-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+        <div className="task-list-type-filters">
           {filterOptions.map((option) => {
             const active = activeFilter === option.key;
+            const className = [
+              'task-list-type-button',
+              `task-list-type-button--${option.key}`,
+              option.key !== 'all' ? 'is-task-type' : '',
+              active ? 'is-active' : '',
+            ].filter(Boolean).join(' ');
+
             return (
               <button
                 key={option.key}
                 type="button"
                 onClick={() => onFilterChange(option.key)}
-                style={{
-                  color: active ? '#fff' : 'var(--c-text-secondary)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  padding: '4px 12px',
-                  minHeight: 28,
-                  borderRadius: 'var(--radius-sm)',
-                  background: active ? `${option.accent}22` : 'rgba(99,102,241,0.06)',
-                  border: active ? `1px solid ${option.accent}88` : '1px solid var(--c-border)',
-                  cursor: 'pointer',
-                  fontFamily: 'var(--font-mono)',
-                  letterSpacing: 0,
-                  whiteSpace: 'nowrap',
-                }}
+                className={className}
                 aria-pressed={active}
               >
-                <span style={{ color: active ? option.accent : 'var(--c-text)', marginRight: 4 }}>
+                <span className="task-list-type-button__count">
                   {option.count}
                 </span>
                 个{option.label}
@@ -222,35 +169,54 @@ export const TaskList: React.FC<TaskListProps> = ({
           })}
         </div>
       </div>
+      {selectionMode && (
+        <BulkSelectionBar
+          selectedCount={selectedTaskIds.length}
+          itemLabel="任务"
+          visibleCount={tasks.length}
+          allVisibleSelected={allVisibleSelected}
+          deleting={bulkDeleting}
+          deleteTitle="删除选中的任务？"
+          onToggleVisibleSelection={handleToggleVisibleSelection}
+          onConfirmDelete={handleConfirmDelete}
+        />
+      )}
       {tasks.length === 0 ? (
         <Empty
           description={
-            <span style={{ color: 'var(--c-text-muted)', fontSize: 14, letterSpacing: 0 }}>
-              {counts.all === 0 ? '暂无任务，快来创建第一个' : '当前类型暂无任务'}
+            <span className="task-list-section__empty-text">
+              {!isLoggedIn ? '登录后可以查看自己的创作作品' : counts.all === 0 ? '暂无任务，快来创建第一个' : '当前类型暂无任务'}
             </span>
           }
-          style={{ padding: '80px 0' }}
+          className="task-list-section__empty"
         />
       ) : (
         <>
           <Row className="task-list-grid" gutter={[16, 16]}>
             {tasks.map((task, i) => (
-              <Col key={task.task_id} xs={24} sm={12} md={8} lg={6} className="task-list-grid__item"
-                style={{ animation: `fadeInUp 0.4s var(--ease-out) ${Math.min(i, 11) * 0.04}s both` }}>
-                <TaskCard task={task} showLikes={activeFilter === "likeRanking"} />
+              <Col key={task.task_id} xs={24} sm={12} md={8} lg={6} className="task-list-grid__item">
+                <Reveal variant="up" delay={i * 40}>
+                  <TaskCard
+                    task={task}
+                    showLikes={activeFilter === 'likeRanking'}
+                    selectionMode={selectionMode}
+                    selected={selectedTaskIdSet.has(task.task_id)}
+                    onToggleSelect={handleToggleTaskSelection}
+                  />
+                </Reveal>
               </Col>
             ))}
           </Row>
           {hasMore && (
             <div
               ref={loadMoreRef}
-              style={{ textAlign: 'center', padding: '32px 0', minHeight: 60 }}
+              className="task-list-section__sentinel"
             >
               {loadingMore && <Spin />}
             </div>
           )}
           {!hasMore && tasks.length > 0 && (
-            <div style={{ textAlign: 'center', padding: '16px 0', color: 'var(--c-text-muted)', fontSize: 12 }}>
+            <div className="task-list-section__end">
               — 已加载全部 —
             </div>
           )}
@@ -258,5 +224,4 @@ export const TaskList: React.FC<TaskListProps> = ({
       )}
     </div>
   );
-};
-export type TaskFilter = 'all' | 'likeRanking' | 'viewRanking' | TaskType.WALLPAPER | TaskType.THEME | TaskType.DIGITAL_HUMAN | TaskType.STICKER_PACK | TaskType.DIY;
+});

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, Tag, Typography, Space } from 'antd';
 import { EyeOutlined, HeartFilled } from '@ant-design/icons';
 import { TaskListItem, TaskType } from '@/types/task';
@@ -18,16 +18,23 @@ const { Text } = Typography;
 interface TaskCardProps {
   task: TaskListItem;
   showLikes?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (taskId: string) => void;
 }
 
-export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) => {
+export const TaskCard = React.memo<TaskCardProps>(({
+  task,
+  showLikes = false,
+  selectionMode = false,
+  selected = false,
+  onToggleSelect,
+}) => {
+  const navigate = useNavigate();
   const cfg = statusConfig[task.status];
-  const [hover, setHover] = useState(false);
   const typeConfig = TASK_TYPE_CONFIG[task.task_type];
   const isDigitalHuman = task.task_type === TaskType.DIGITAL_HUMAN;
-  const coverImageUrl = toResourceUrl(
-    isDigitalHuman ? (task.avatar_image_url || '') : (task.background_image_url || task.preview_image_url || ''),
-  );
+  const coverImageUrl = toResourceUrl(task.background_image_url || '');
   const hasImage = Boolean(coverImageUrl);
   const typeIcon = React.cloneElement(typeConfig.icon as React.ReactElement<{ style?: React.CSSProperties }>, {
     style: {
@@ -39,34 +46,60 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
   });
   const taskHref = `/tasks/${task.task_id}`;
 
+  const handleOpenTask = () => {
+    if (selectionMode) {
+      onToggleSelect?.(task.task_id);
+      return;
+    }
+    navigate(taskHref);
+  };
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (selectionMode) {
+        onToggleSelect?.(task.task_id);
+      } else {
+        navigate(taskHref);
+      }
+    }
+  };
+
   return (
-    <Link
-      className="task-card-link"
-      to={taskHref}
-      aria-label={`查看任务详情：${task.user_input}`}
+    <div
+      className={[
+        'task-card-link',
+        selectionMode ? 'is-selectable' : '',
+        selected ? 'is-selected' : '',
+      ].filter(Boolean).join(' ')}
+      role={selectionMode ? 'checkbox' : 'link'}
+      tabIndex={0}
+      aria-checked={selectionMode ? selected : undefined}
+      aria-label={selectionMode ? `${selected ? '取消选择' : '选择'}任务：${task.user_input}` : `查看任务详情：${task.user_input}`}
+      onClick={handleOpenTask}
+      onKeyDown={handleKeyDown}
       style={{
         display: 'block',
         height: '100%',
         color: 'inherit',
         textDecoration: 'none',
+        cursor: selectionMode ? 'pointer' : undefined,
       }}
     >
     <Card
       className="task-card"
       hoverable
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
       style={{
         borderRadius: 'var(--radius-lg)',
         overflow: 'hidden',
-        border: hover ? '1px solid var(--c-border-active)' : '1px solid var(--c-border)',
+        border: '1px solid var(--c-border)',
         boxShadow: 'var(--shadow-card)',
         cursor: 'pointer',
         background: 'var(--c-bg-card-solid)',
       }}
       styles={{ body: { padding: 0 } }}
       cover={
-        <div className="task-card__cover" style={{ height: 190, overflow: 'hidden', background: cfg.bg, position: 'relative' }}>
+        <div className="task-card__cover" style={{ height: 232, overflow: 'hidden', background: cfg.bg, position: 'relative' }}>
           {hasImage ? (
             <img
               alt="preview"
@@ -83,12 +116,22 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
             </div>
           )}
 
+          {/* ── Scan overlays ── */}
+          <div className="task-card__scan-left" />
+          <div className="task-card__scan-bottom" />
+
+          {selectionMode && (
+            <div className="task-card__select-mark" aria-hidden="true">
+              <span />
+            </div>
+          )}
+
           {/* status badge */}
           <div style={{
             position: 'absolute', top: 10, right: 10,
             background: `${cfg.color}20`, border: `1px solid ${cfg.color}40`,
             color: cfg.color, padding: '4px 14px', borderRadius: 'var(--radius-sm)',
-            fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6,
+            fontSize: 11, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6,
             letterSpacing: '0.3px',
             boxShadow: `0 0 12px ${cfg.color}15`,
           }}>
@@ -98,17 +141,18 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
         </div>
       }
     >
-      <div className="task-card__body" style={{ padding: 16 }}>
-        <Space direction="vertical" style={{ width: '100%' }} size={10}>
+      <div className="task-card__body" style={{ padding: '12px 14px 14px' }}>
+        <Space direction="vertical" style={{ width: '100%' }} size={6}>
           <Text ellipsis style={{
-            fontSize: 14, lineHeight: 1.5, fontWeight: 600,
-            color: 'var(--c-text)', minHeight: 42, display: 'block',
+            fontSize: 13, lineHeight: '22px', fontWeight: 500,
+            color: 'var(--c-text)', height: 22, display: 'block',
+            overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
           }}>
             {task.user_input}
           </Text>
           <div className="task-card__meta" style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            paddingTop: 10, borderTop: '1px solid var(--c-border)',
+            paddingTop: 8, borderTop: '1px solid var(--c-border)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <Tag className="neon-tag" style={{
@@ -148,7 +192,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
               marginLeft: 'auto', flexShrink: 0,
             }}>
               <span style={{
-                fontSize: 12, fontWeight: 700, color: 'var(--c-text-muted)',
+                fontSize: 12, fontWeight: 500, color: 'var(--c-text-muted)',
                 display: 'flex', alignItems: 'center', gap: 4,
                 fontFamily: 'var(--font-mono)',
               }}>
@@ -157,7 +201,7 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
               </span>
               {showLikes && (task.likes ?? 0) > 0 && (
                 <span style={{
-                  fontSize: 12, fontWeight: 700, color: '#ef4444',
+                  fontSize: 12, fontWeight: 500, color: '#ef4444',
                   display: 'flex', alignItems: 'center', gap: 4,
                   fontFamily: 'var(--font-mono)',
                 }}>
@@ -173,6 +217,6 @@ export const TaskCard = React.memo<TaskCardProps>(({ task, showLikes = false }) 
         </Space>
       </div>
     </Card>
-    </Link>
+    </div>
   );
 });

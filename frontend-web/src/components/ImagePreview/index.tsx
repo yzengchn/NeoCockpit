@@ -5,6 +5,8 @@ import { toResourceUrl } from '@/utils/url';
 
 const { Text } = Typography;
 
+export type PreviewViewMode = 'single' | 'grid';
+
 interface ImagePreviewProps {
   imagePath?: string;
   images?: Array<{ name: string; path: string }>;
@@ -13,9 +15,9 @@ interface ImagePreviewProps {
   /** When true, show enhanced preview experience */
   autoPreview?: boolean;
   /** External view mode override */
-  viewMode?: 'single' | 'grid';
+  viewMode?: PreviewViewMode;
   /** Callback when view mode changes */
-  onViewModeChange?: (mode: 'single' | 'grid') => void;
+  onViewModeChange?: (mode: PreviewViewMode) => void;
 }
 
 type PreviewImage = { name: string; path: string; url: string };
@@ -59,7 +61,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
   viewMode: externalViewMode,
   onViewModeChange,
 }) => {
-  const [internalViewMode, setInternalViewMode] = useState<'single' | 'grid'>('single');
+  const [internalViewMode, setInternalViewMode] = useState<PreviewViewMode>('single');
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewCurrent, setPreviewCurrent] = useState(0);
   const [previewItems, setPreviewItems] = useState<PreviewImage[]>([]);
@@ -69,7 +71,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
     .filter((image) => Boolean(image.url));
 
   const viewMode = externalViewMode ?? internalViewMode;
-  const setViewMode = (mode: 'single' | 'grid') => {
+  const setViewMode = (mode: PreviewViewMode) => {
     setInternalViewMode(mode);
     onViewModeChange?.(mode);
   };
@@ -149,6 +151,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
                     <img
                       src={image.url}
                       alt={image.name}
+                      loading="lazy"
+                      decoding="async"
                       style={stableImageStyle}
                     />
                   </button>
@@ -218,6 +222,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               <img
                 src={displayItem.url}
                 alt={alt}
+                loading="lazy"
+                decoding="async"
                 style={{ ...stableImageStyle, maxHeight: 560, borderRadius: 'var(--radius-sm)' }}
               />
             </button>
@@ -283,6 +289,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
                 <img
                   src={image.url}
                   alt={image.name}
+                  loading="lazy"
+                  decoding="async"
                   style={stableImageStyle}
                 />
               </div>
@@ -324,6 +332,8 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <img
               src={displayItem.url}
               alt={alt}
+              loading="lazy"
+              decoding="async"
               style={{ ...stableImageStyle, borderRadius: 'var(--radius-sm)' }}
             />
           </button>
