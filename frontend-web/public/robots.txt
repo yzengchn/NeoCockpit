@@ -1,9 +1,19 @@
 User-agent: *
 Allow: /
-Allow: /tasks
-Allow: /profile
+Allow: /creator
+Allow: /inspiration
+Allow: /themes
+Allow: /community
+Allow: /docs
 Disallow: /api/
 Disallow: /admin/
+Disallow: /tasks/
+Disallow: /profile
+Disallow: /themes/mine
+Disallow: /docs/api/
+Disallow: /docs/llms.txt
+Disallow: /docs/llms-full.txt
+Disallow: /docs/llms.mdx/
 
 # Sitemap
 Sitemap: https://neocockpit.cn/sitemap.xml

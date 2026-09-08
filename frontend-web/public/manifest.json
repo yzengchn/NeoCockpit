@@ -1,7 +1,7 @@
 {
-  "name": "Neocockpit - AI生成壁纸和主题",
-  "short_name": "Neocockpit",
-  "description": "AI一键生成车载壁纸、主题、数字人",
+  "name": "NeoCockpit - AI车机主题生成器",
+  "short_name": "NeoCockpit",
+  "description": "AI生成车机主题、主题包在线编辑和车机一键应用平台",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08090d",

@@ -1,1 +1,4 @@
+/theme-editor/new /theme-editor/ 200
+/theme-editor/new/* /theme-editor/ 200
+/theme-editor /theme-editor/ 301
 /* /index.html 200
